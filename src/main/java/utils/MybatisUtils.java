@@ -31,7 +31,7 @@ public class MybatisUtils
     //获取SqlSession连接,通过SqlSession就可以进行所有CRUD操作了
     public static SqlSession getSession()
     {
-        return sqlSessionFactory.openSession();
+        return sqlSessionFactory.openSession(true);
     }
 }
 

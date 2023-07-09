@@ -4,8 +4,41 @@
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 
 <mapper namespace="dao.TaskDao">
+    <insert id="save" useGeneratedKeys="true" keyProperty="id">
+        insert into task
+            (id, data, create_time, sort, status)
+        values (#{id}, #{data}, #{createTime}, #{sort}, #{status})
+    </insert>
+    <update id="update">
+        update task
+        <set>
+            <if test="data != null">
+                data = #{data},
+            </if>
+            <if test="createTime != null">
+                create_time = #{createTime},
+            </if>
+            <if test="doneTime != null">
+                done_time = #{doneTime},
+            </if>
+            <if test="sort != null">
+                sort = #{sort},
+            </if>
+            <if test="status != null">
+                status = #{status},
+            </if>
+        </set>
+        where id = #{id}
+    </update>
+    <delete id="delete">
+        delete
+        from task
+        where id = #{id}
+    </delete>
+
     <select id="findAll" resultType="pojo.TaskEntity">
         select *
         from task
+        order by status asc, sort ASC, done_time ASC, create_time ASC
     </select>
 </mapper>

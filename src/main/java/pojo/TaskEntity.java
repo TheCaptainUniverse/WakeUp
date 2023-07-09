@@ -3,7 +3,6 @@ package pojo;
 import lombok.Data;
 
 import java.io.Serializable;
-import java.time.LocalDateTime;
 
 /**
  * @author CaptainUniverse_
@@ -13,7 +12,8 @@ import java.time.LocalDateTime;
 public class TaskEntity implements Serializable
 {
     private Long id;
-    private LocalDateTime createTime;
+    private String createTime;
+    private String doneTime;
     private String data;
     private int sort;
     private int status;

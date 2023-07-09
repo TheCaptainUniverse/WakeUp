@@ -10,6 +10,12 @@ import java.util.List;
  */
 public interface TaskDao
 {
-   List<TaskEntity> findAll();
+    List<TaskEntity> findAll();
+
+    void save(TaskEntity taskEntity);
+
+    void update(TaskEntity taskEntity);
+
+    void delete(TaskEntity taskEntity);
 }
 

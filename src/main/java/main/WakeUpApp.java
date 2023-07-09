@@ -7,6 +7,8 @@ import pojo.TaskEntity;
 import utils.MybatisUtils;
 
 import javax.swing.*;
+import javax.swing.event.ListSelectionEvent;
+import javax.swing.event.ListSelectionListener;
 import java.awt.*;
 import java.awt.event.*;
 import java.time.LocalDateTime;
@@ -23,19 +25,20 @@ public class WakeUpApp extends JFrame
     private DefaultListModel<String> listModel;
     private JPopupMenu popupMenu;
     private JMenuItem stickItem;
-    private JMenuItem doneItem;
-    private JMenuItem undoItem;
     private JMenuItem deleteItem;
     private Font taskFont;
+
+    private static final TaskDao taskDao = MybatisUtils.getSession().getMapper(TaskDao.class);
+    private static final SqlSession sqlSession = MybatisUtils.getSession();
 
     private static final Color COLOR_UNDO = new Color(0xC9C9C9);
     private static final Color COLOR_DONE = new Color(0x5C5C5C);
 
     private static final Color COLOR_FONT = new Color(0x242424);
     private static final Color COLOR_BACKGROUND = new Color(0xffffff);
-
-    private static final HashMap<String, Boolean> taskMap = new HashMap<>();
-    private Boolean isInTodoList;
+    private static final Icon SELECTED_ICON = UIManager.getIcon("FileView.computerIcon");
+    private static final HashMap<Integer, TaskEntity> taskMap = new HashMap<>();
+    private static final DateTimeFormatter formatter = DateTimeFormatter.ofPattern("HH:mm:ss");
 
 
     public WakeUpApp()
@@ -82,6 +85,9 @@ public class WakeUpApp extends JFrame
 
         getContentPane().add(panel);
 
+        stickItem = new JMenuItem("置顶");
+        deleteItem = new JMenuItem("删除");
+
 
         todoList.addMouseListener(new MouseAdapter()
         {
@@ -96,33 +102,6 @@ public class WakeUpApp extends JFrame
                         todoList.setSelectedIndex(index);
 
                         JPopupMenu menu = getPopupMenu();
-
-                        Boolean finish = taskMap.get(todoList.getSelectedValue());
-                        if (finish)
-                        {
-                            menu.add(undoItem);
-                        } else
-                        {
-                            menu.add(doneItem);
-                        }
-
-                        doneItem.addActionListener(new AbstractAction()
-                        {
-                            @Override
-                            public void actionPerformed(ActionEvent e)
-                            {
-                                toggleTaskCompletion(index);
-                            }
-                        });
-
-                        undoItem.addActionListener(new AbstractAction()
-                        {
-                            @Override
-                            public void actionPerformed(ActionEvent e)
-                            {
-                                toggleTaskCompletion(index);
-                            }
-                        });
 
                         menu.show(todoList, e.getX(), e.getY());
                     }
@@ -144,8 +123,8 @@ public class WakeUpApp extends JFrame
                         list.setSelectionBackground(newColor);
                         list.repaint();
 
-                        Boolean finish = taskMap.get(task);
-                        taskMap.put(task, !finish);
+                        changeTaskStatus(index);
+                        reloadData();
 
                         listModel.setElementAt(task, index);
                     }
@@ -174,32 +153,56 @@ public class WakeUpApp extends JFrame
             }
         });
 
-
-        // 创建 Action
-        Action focusAction = new AbstractAction()
+        todoList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        todoList.addListSelectionListener(new ListSelectionListener()
         {
             @Override
-            public void actionPerformed(ActionEvent e)
+            public void valueChanged(ListSelectionEvent e)
             {
-                taskField.requestFocusInWindow();
+                if (!e.getValueIsAdjusting())
+                {
+                    int selectedIndex = todoList.getSelectedIndex();
+                    if (selectedIndex != -1)
+                    {
+                        todoList.repaint();
+                    }
+                }
             }
-        };
+        });
 
-// 创建 KeyStroke
-        KeyStroke keyStroke = KeyStroke.getKeyStroke(KeyEvent.CTRL_DOWN_MASK, InputEvent.ALT_DOWN_MASK);
+        loadData();
+    }
 
-// 绑定快捷键和 Action
-        taskField.getInputMap(JComponent.WHEN_ANCESTOR_OF_FOCUSED_COMPONENT).put(keyStroke, "focusAction");
-        taskField.getActionMap().put("focusAction", focusAction);
+    private static void changeTaskStatus(int index)
+    {
+        TaskEntity taskEntity = taskMap.get(index);
+        int status = taskEntity.getStatus();
+        boolean finish = status == 1;
+        if (!finish)
+        {
+            taskEntity.setDoneTime(LocalDateTime.now().format(formatter));
+        } else
+        {
+            taskEntity.setDoneTime("");
+        }
+        taskEntity.setStatus(finish ? 0 : 1);
+        taskDao.update(taskEntity);
+    }
+
+    private void loadData()
+    {
+        List<TaskEntity> taskList = taskDao.findAll();
+        for (TaskEntity taskEntity : taskList)
+        {
+            String taskWithTimeInList = taskEntity.getCreateTime() + "\n" + taskEntity.getData();
+            taskMap.put(taskEntity.getSort(), taskEntity);
+            listModel.addElement(taskWithTimeInList);
+        }
     }
 
     private JPopupMenu getPopupMenu()
     {
         popupMenu = new JPopupMenu();
-        stickItem = new JMenuItem("置顶");
-        doneItem = new JMenuItem("完成");
-        undoItem = new JMenuItem("未完成");
-        deleteItem = new JMenuItem("删除");
         popupMenu.add(stickItem);
         popupMenu.add(deleteItem);
         stickItem.addActionListener(new ActionListener()
@@ -210,9 +213,25 @@ public class WakeUpApp extends JFrame
                 int selectedIndex = todoList.getSelectedIndex();
                 if (selectedIndex != -1)
                 {
-                    String selectedTask = listModel.getElementAt(selectedIndex);
-                    listModel.remove(selectedIndex);
-                    listModel.add(0, selectedTask);
+//                    String selectedTask = listModel.getElementAt(selectedIndex);
+//                    listModel.remove(selectedIndex);
+//                    listModel.add(0, selectedTask);
+
+                    List<TaskEntity> taskList = taskDao.findAll();
+                    for (TaskEntity task : taskList)
+                    {
+                        int sort = task.getSort();
+                        if (sort >= 0 && sort < selectedIndex)
+                        {
+                            task.setSort(sort + 1);
+                            taskDao.update(task);
+                        }
+                    }
+                    // 更新数据库中的排序
+                    TaskEntity taskEntity = taskMap.get(selectedIndex);
+                    taskEntity.setSort(0);
+                    taskDao.update(taskEntity);
+                    reloadData();
                 }
             }
         });
@@ -224,8 +243,8 @@ public class WakeUpApp extends JFrame
                 int selectedIndex = todoList.getSelectedIndex();
                 if (selectedIndex != -1)
                 {
-                    listModel.remove(selectedIndex);
-                    taskMap.remove(todoList.getSelectedValue());
+                    TaskEntity taskEntity = taskMap.get(selectedIndex);
+                    deleteTask(taskEntity);
                 }
             }
         });
@@ -233,16 +252,31 @@ public class WakeUpApp extends JFrame
         return popupMenu;
     }
 
-
-    private void toggleTaskCompletion(int index)
+    private void deleteTask(TaskEntity taskEntity)
     {
-        String task = todoList.getModel().getElementAt(index);
-        Boolean isCompleted = taskMap.get(task);
-        if (isCompleted != null)
+        taskDao.delete(taskEntity);
+        int selectedSort = taskEntity.getSort();
+
+        // 更新数据库中的排序
+        List<TaskEntity> taskList = taskDao.findAll();
+        for (TaskEntity task : taskList)
         {
-            taskMap.put(task, !isCompleted);
-            todoList.repaint();
+            int sort = task.getSort();
+            if (sort > selectedSort)
+            {
+                task.setSort(sort - 1);
+                taskDao.update(task);
+            }
         }
+        // 更新内存中的排序
+        reloadData();
+    }
+
+    private void reloadData()
+    {
+        taskMap.clear();
+        listModel.clear();
+        loadData();
     }
 
     private void addTask()
@@ -251,28 +285,44 @@ public class WakeUpApp extends JFrame
         if (!task.isEmpty())
         {
             LocalDateTime currentTime = LocalDateTime.now();
-            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("MM-dd");
-            String formattedTime = currentTime.format(formatter);
-            String taskWithTime = formattedTime + "\n" + task;
-            taskMap.put(taskWithTime, false);
-            listModel.addElement(taskWithTime);
+            String formattedTime = formatter.format(currentTime);
+
+            // save to database
+            TaskEntity taskEntity = new TaskEntity();
+            taskEntity.setCreateTime(formattedTime);
+            taskEntity.setData(task);
+            taskEntity.setSort(taskMap.size());
+            taskEntity.setStatus(0);
+            taskDao.save(taskEntity);
+
+            reloadData();
+//            String taskWithTime = formattedTime + "\n" + task;
+//            taskMap.put(taskMap.size(), taskEntity);
+//            listModel.addElement(taskWithTime);
             taskField.setText("");
         }
     }
 
     class TodoListRenderer extends DefaultListCellRenderer
     {
-
         @Override
         public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus)
         {
             JLabel component = (JLabel) super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
-            String task = (String) value;
-            Boolean finish = taskMap.get(task);
-            Color backgroundColor = (finish != null && finish) ? COLOR_DONE : COLOR_UNDO;
+            TaskEntity taskEntity = taskMap.get(index);
+            int status = taskEntity.getStatus();
+            boolean finish = status == 1;
+            Color backgroundColor = finish ? COLOR_DONE : COLOR_UNDO;
             component.setBackground(backgroundColor);
             component.setForeground(COLOR_FONT);
             component.setText("<html><body style='width: 230px'>" + formatTask(value.toString()) + "</body></html>");
+            if (isSelected)
+            {
+                component.setIcon(SELECTED_ICON);
+            } else
+            {
+                component.setIcon(null);
+            }
             return component;
         }
 
@@ -310,11 +360,6 @@ public class WakeUpApp extends JFrame
             WakeUpApp app = new WakeUpApp();
             app.setVisible(true);
         });
-
-        SqlSession session = MybatisUtils.getSession();
-        TaskDao taskDao = session.getMapper(TaskDao.class);
-        List<TaskEntity> all = taskDao.findAll();
-        System.out.println(all);
     }
 }
 
